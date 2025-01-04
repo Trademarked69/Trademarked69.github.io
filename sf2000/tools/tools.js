@@ -304,7 +304,7 @@ function knownHash(hash) {
       return "10.13";
 
     default:
-      return false;
+      return "08.03"; //assume 1.6 multicore 
   }
 }
 
