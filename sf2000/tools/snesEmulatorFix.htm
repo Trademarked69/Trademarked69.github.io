@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>Data Frog SF2000 SNES Emulator Fix</title>
+    <meta name="viewport" content="width=device-width">
+    <link rel="stylesheet" href="tools.css">
+  </head>
+  <body>
+    <h1>Data Frog SF2000 SNES Emulator Fix</h1>
+    <p>This tool can be used to fix the SNES Emualator the Data Frog SF2000, so that games run at full speed on first launch. Please note this tool is provided as-is, and no support will be given if this corrupts your device's bios; make sure you have backups of anything you care about before messing with your device's critical files! 🙂</p>
+    <hr>
+    <div id="steps">
+      <section id="bisrvSection">
+        <h2>Step 1: Select Original <code>bisrv.asd</code></h2>
+        <p>Select the <code>bisrv.asd</code> file you want to fix the SNES emulator on. You should probably make a backup of the file first, just in case! You can find the <code>bisrv.asd</code> file in the <code>bios</code> folder on your microSD card.</p>
+        <div id="bisrvMessages"></div>
+        <div class="controlContainer">
+          <label class="control">Open <code>bisrv.asd</code>: <input id="bisrvSelector" type="file" accept=".asd" onchange="bisrvLoad(event.target.files[0])"></label>
+        </div>
+      </section>
+    </div>
+    <script src="tools.js"></script>
+    <script type="text/javascript">
+
+      // Global variables...
+      var bisrvData;            				// Used to store the binary data from the bisrv.asd file
+      var SampleRateOffset;     				// This will hold the offset for patching the sample rate
+      var SampleRatePatchValue = [0x11, 0x2B];  // Set to 11025 Hz (default is 22050 Hz)
+	  var CyclesPctOffset;						// This will hold the offset for patching the cycles percentage
+	  var CyclesPctPatchValue = [0x50];         // Set to 80% (default is 100% or 0x64)
+
+      // This function is triggered when the person selects a file in Step 1...
+      function bisrvLoad(file) {
+
+        // Read in the contents of the selected file as array buffer...
+        var frBisrv = new FileReader();
+        frBisrv.readAsArrayBuffer(file);
+        frBisrv.onload = function(event) {
+
+          // Clear out any HTML that might already exist after Step 1...
+          while(document.getElementById("bisrvSection").nextSibling) {
+            document.getElementById("bisrvSection").nextSibling.remove();
+          }
+
+          // Clear any old messages...
+          document.getElementById("bisrvMessages").innerHTML = "";
+
+          // Read the provided file's data into an array...
+          bisrvData = new Uint8Array(event.target.result);
+
+          // We'll do a hash-check against it...
+          hashResult = getFirmwareHash(bisrvData);
+
+          // The result could be either a Promise if it had a bisrv.asd-like structure and we got
+          // a hash, or false otherwise... let's check!
+          if (hashResult instanceof Promise) {
+
+            // We got a Promise! Wait for it to finish so we get our bisrv.asd hash...
+            hashResult.then(function(dataHash) {
+
+              // Check the hash against all the known good ones...
+              switch (knownHash(dataHash)) {
+
+				// Mid-March BIOS...
+				case "03.15":
+				  setMessage("warning", "bisrvMessages", "WARNING: Obsolete Mid-March firmware detected. <b>Mid-March firmware does not require this patch.</b><br>Upgrading to <a href=https://github.com/Dteyn/Datafrog_SF2000_Vanilla/releases/download/v1.6/bisrv.zip>August 3rd firmware</a> is recommended.");				  
+				  return;
+
+				// April 20th BIOS...
+				case "04.20":
+				  SampleRateOffset = 0xC0FDC8;
+				  CyclesPctOffset = 0xC0FDD0;
+				  setMessage("warning", "bisrvMessages", "WARNING: Obsolete April 20th firmware detected. Upgrading to <a href=https://github.com/Dteyn/Datafrog_SF2000_Vanilla/releases/download/v1.6/bisrv.zip>August 3rd firmware (v1.6)</a> is recommended.");
+				  break;
+
+				// May 15th BIOS...
+				case "05.15":
+				  SampleRateOffset = 0xC11D08;
+				  CyclesPctOffset = 0xC11D10;
+				  setMessage("warning", "bisrvMessages", "WARNING: Obsolete May 15th firmware detected. Upgrading to <a href=https://github.com/Dteyn/Datafrog_SF2000_Vanilla/releases/download/v1.6/bisrv.zip>August 3rd firmware (v1.6)</a> is recommended.");
+				  break;
+
+				// May 22nd BIOS...
+				case "05.22":
+				  SampleRateOffset = 0xC11D08;
+				  CyclesPctOffset = 0xC11D10;
+				  setMessage("warning", "bisrvMessages", "WARNING: Obsolete May 22nd firmware detected. Upgrading to <a href=https://github.com/Dteyn/Datafrog_SF2000_Vanilla/releases/download/v1.6/bisrv.zip>August 3rd firmware (v1.6)</a> is recommended.");
+				  break;
+
+				// August 3rd BIOS...
+				case "08.03":
+				  SampleRateOffset = 0xC0A178;
+				  CyclesPctOffset = 0xC0A180;
+				  setMessage("info", "bisrvMessages", "INFO: August 3rd <code>bisrv.asd</code> (v1.6) detected.");
+				  break;
+			      
+                                // October 7th BIOS...
+		                case "10.07":
+			      	  setMessage("warning", "bisrvMessages", "October 7th <code>bisrv.asd</code> (v1.7) detected. This version does not require the SNES emulator fix. This BIOS version also has a bug with SNES save states and is not recommended to be used. Upgrade to the October 13th BIOS (v1.71) instead.");
+                                  return;
+
+			        // October 13th BIOS...
+		                case "10.13":
+			          setMessage("warning", "bisrvMessages", "October 13th <code>bisrv.asd</code> (v1.71) detected. This version does not require the SNES emulator fix.");
+			          return;
+			      
+                default:
+                  // Huh... wasn't false so had bisrv.asd structure, but didn't return
+                  // a known hash... a new BIOS version? Unknown anyway!
+                  console.log(dataHash);
+                  setMessage("error", "bisrvMessages", "ERROR: While the file you've selected does appear to be generally structured like the SF2000's <code>bisrv.asd</code> BIOS file, the specifics of your file don't match any known SF2000 BIOS version. As such, this tool cannot safely modify the selected file.");
+                  return;
+              }
+
+              // If we're here we've got a good file, so onwards to Step 2 (checking and applying the appropriate patch)...
+              stepTwo();
+            });
+          }
+          else {
+
+            // We got false, so whatever it was, it wasn't a bisrv.asd...
+            setMessage("error", "bisrvMessages", "ERROR: The file you've selected doesn't appear to have the same data structure as expected for a <code>bisrv.asd</code> file.");
+            return;
+          }
+        };
+      }
+
+      // This function triggers when the user has selected a known `bisrv.asd`
+      // variant...
+      function stepTwo() {
+
+        // First, let's check the sample rate offset to see which value resides there...
+        switch (bisrvData[SampleRateOffset]) {    
+		
+          // Firmware does not have the SNES emulator fix applied. Let's fix it!
+          case 0x22:
+		  
+			  // Apply the patch to the firmware to fix the SNES emulator
+			  bisrvData[SampleRateOffset] = SampleRatePatchValue[0];
+			  bisrvData[SampleRateOffset + 1] = SampleRatePatchValue[1];		  
+			  bisrvData[CyclesPctOffset] = CyclesPctPatchValue[0];			
+			  
+		      var html = "<section id=\"bisrvSection\"><h2>Success! 🎉</h2><p>Patch applied successfully! You may now download the patched firmware.</p><div id=\"patchMessages\"></div></section>";
+		      document.getElementById("steps").insertAdjacentHTML("beforeend", html);
+			  
+			  break;
+			
+          // SNES emulator fix has already been applied. Inform the user as such.
+          case 0x11:
+    
+              // var html = "<section id=\"patchSection\"><h2>SNES Emulator Fix Already Applied</h2><p>This firmware file already has the SNES Emulator Fix applied to it. No need to do any patching.</p><div id=\"patchMessages\"></div></section><hr>";
+		      // document.getElementById("steps").insertAdjacentHTML("beforeend", html);    
+			  setMessage("info", "bisrvMessages", "INFO: The <code>bisrv.asd</code> BIOS file you've selected already has the SNES Emulator Fix applied to it. No need to do any patching.");
+			  return;
+          
+	  default:
+	    // If we've landed here, the firmware has correctly been identified, yet for some reason, the data at the offset to modify doesn't match what was expected. We cannot proceed.          
+            setMessage("error", "bisrvMessages", "ERROR: While the file you've selected does appear to be generally structured like the SF2000's <code>bisrv.asd</code> BIOS file, and was correctly identified, the values don't match what is expected. As such, this tool cannot safely modify the selected file.");
+            return;
+          }
+		  
+
+		// Now let's build our HTML for the Download section
+        var html = "<section id=\"downloadSection\"><h2>Step 2: Download Updated <code>bisrv.asd</code></h2><p>Click the download button for the updated <code>bisrv.asd</code> file; use it to replace the one in the <code>bios</code> folder on your SF2000's microSD card.</p><p><b>IMPORTANT:</b> Make sure to install the <a href=https://github.com/vonmillhausen/sf2000#bootloader-bug>Bootloader Bugfix</a> before messing with your <code>bios</code> folder!</p><div id=\"downloadMessages\"></div>";
+
+		// Add our download button...
+        html += "<div class=\"controlContainer\"><div class=\"control\"><input id=\"userDownload\" type=\"button\" value=\"Download\"></div></div>";
+
+        // Close our section...
+        html += "</section>";
+
+        // Finally, add a <hr> separator after the last step, and append the new step...
+        document.getElementById("steps").insertAdjacentHTML("beforeend", "<hr>");
+        document.getElementById("steps").insertAdjacentHTML("beforeend", html);
+
+        // Let's add the event handler for our Download button...
+        var dButton = document.getElementById("userDownload");
+        dButton.addEventListener("click", function() {
+
+		  // We should now have the patched bisrv.asd data in bisrvData; all that's left
+		  // to do is re-calculate the CRC32 bytes for the modified file and set them in
+		  // the data, and send the data to the user's browser. Easy!
+
+          // Next, we calculate a new CRC32 for the updated bisrv.asd and apply it...
+          patchCRC32(bisrvData);
+
+          // And finally, send the data to the user's browser as a file download...
+          downloadToBrowser(bisrvData, "application/octet-stream", "bisrv.asd");
+
+        });
+      }
+    </script>
+	Credits to: <b>bnister</b> on the <a href=https://discord.gg/retrohandhelds>Retro Handheld Discord server</a> for creating this patch. Thank you!<br><p>
+	<b>VonMillhausen</b> for the basis of this tool and for maintaining the <a href=https://vonmillhausen.github.io/sf2000/>SF2000 Information repository</a><br><p>
+	You can find more of my SF2000 projects here: <a href=https://dteyn.github.io/sf2000_projects.htm>SF2000 Projects</a>
+    <hr>
+    <p><a rel="license" href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>: public domain. Version 1.0, 20231009.1</p>
+  </body>
+</html>
