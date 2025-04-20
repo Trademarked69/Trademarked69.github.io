@@ -1,3 +1,2 @@
-- # [Vita stuff](https://trademarked69.github.io/vita/)  
 - # [3DS stuff](https://trademarked69.github.io/3ds/)  
 - # [SF2000 stuff](https://trademarked69.github.io/sf2000/)  
