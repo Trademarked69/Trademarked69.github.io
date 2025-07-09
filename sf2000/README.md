@@ -1,5 +1,6 @@
 - # [Homepage](https://trademarked69.github.io/)  
 - # [Web tools](https://trademarked69.github.io/sf2000/tools)  
+- # [Discord](https://trademarked69.github.io/sf2000/discord)  
 
 ### GarlicOS simple theme 13 menus mod
 [Download](https://github.com/Trademarked69/sf2000_multicore/releases/download/nightly-save-4/garlicOS_simple_theme-13_menus_mod.7z)  
